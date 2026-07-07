@@ -2,147 +2,267 @@ import streamlit as st
 import pandas as pd
 import datetime
 import time
+import random
 
-# Konfigurasi Halaman
+# --- Konfigurasi Halaman & CSS Kustom ---
 st.set_page_config(
-    page_title="RapatOnline Pro",
-    page_icon="🎥",
+    page_title="RapatHub - Tanpa Login",
+    page_icon="🚀",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
+# CSS Kustom untuk Tampilan Modern (Glassmorphism & Gradient)
+st.markdown("""
+<style>
+    /* Background Gradient */
+    .stApp {
+        background: linear-gradient(135deg, #1e1e2f 0%, #2a2a40 100%);
+        color: #ffffff;
+    }
+
+    /* Container Utama dengan Glass Effect */
+    .main-container {
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+
+    /* Judul dengan Gradasi */
+    h1, h2, h3 {
+        background: -webkit-linear-gradient(45deg, #00c6ff, #0072ff);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 800;
+    }
+
+    /* Tombol Modern */
+    .stButton>button {
+        background: linear-gradient(45deg, #00c6ff, #0072ff);
+        color: white;
+        border: none;
+        border-radius: 50px;
+        padding: 10px 25px;
+        font-weight: bold;
+        transition: all 0.3s;
+        box-shadow: 0 4px 15px rgba(0, 198, 255, 0.4);
+    }
+    .stButton>button:hover {
+        transform: scale(1.05);
+        box-shadow: 0 6px 20px rgba(0, 198, 255, 0.6);
+    }
+
+    /* Input Text Modern */
+    .stTextInput>div>div>input {
+        background-color: rgba(255, 255, 255, 0.1);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+    }
+
+    /* Chat Bubble */
+    .chat-bubble {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 10px;
+        border-radius: 10px;
+        margin-bottom: 5px;
+        border-left: 4px solid #00c6ff;
+    }
+
+    /* Statistik Card */
+    .stat-card {
+        background: rgba(255, 255, 255, 0.05);
+        padding: 15px;
+        border-radius: 15px;
+        text-align: center;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .stat-value {
+        font-size: 2em;
+        font-weight: bold;
+        color: #00c6ff;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # --- Inisialisasi Session State ---
-if 'meeting_active' not in st.session_state:
-    st.session_state.meeting_active = False
-if 'meeting_room_id' not in st.session_state:
-    st.session_state.meeting_room_id = ""
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = []
-if 'participants' not in st.session_state:
-    st.session_state.participants = []
+if 'joined' not in st.session_state:
+    st.session_state.joined = False
+if 'username' not in st.session_state:
+    st.session_state.username = "Guest"
+if 'meeting_id' not in st.session_state:
+    st.session_state.meeting_id = ""
+if 'meeting_start' not in st.session_state:
+    st.session_state.meeting_start = None
+if 'chat_log' not in st.session_state:
+    st.session_state.chat_log = []
+if 'notes' not in st.session_state:
+    st.session_state.notes = []
+if 'reactions' not in st.session_state:
+    st.session_state.reactions = {"👍": 0, "🔥": 0, "🎉": 0}
 
-# --- Sidebar: Informasi & Kontrol ---
-st.sidebar.title("🎛️ Kontrol Rapat")
-st.sidebar.markdown("### Status Sistem")
+# --- Halaman Login (Sederhana & Cepat) ---
+if not st.session_state.joined:
+    st.markdown("<h1 style='text-align: center;'>🚀 Selamat Datang di RapatHub</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #ccc;'>Rapat Online Instan Tanpa Login. Cukup masukkan nama Anda!</p>", unsafe_allow_html=True)
 
-status_options = ["Menunggu", "Sedang Berlangsung", "Selesai"]
-current_status = st.sidebar.selectbox("Status Rapat", status_options, index=1 if st.session_state.meeting_active else 0)
-
-# Update status berdasarkan input
-if current_status == "Sedang Berlangsung" and not st.session_state.meeting_active:
-    st.session_state.meeting_active = True
-    st.session_state.meeting_room_id = f"rapat-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-elif current_status != "Sedang Berlangsung":
-    st.session_state.meeting_active = False
-    st.session_state.meeting_room_id = ""
-
-st.sidebar.divider()
-
-# Input Peserta
-st.sidebar.subheader("Daftar Peserta")
-new_participant = st.sidebar.text_input("Tambah Peserta Baru")
-if st.sidebar.button("Tambah"):
-    if new_participant:
-        st.session_state.participants.append(new_participant)
-        st.sidebar.success(f"{new_participant} ditambahkan!")
-
-# Tampilkan daftar peserta
-if st.session_state.participants:
-    st.sidebar.markdown("### Daftar Hadir")
-    for i, p in enumerate(st.session_state.participants):
-        st.sidebar.write(f"{i+1}. {p}")
-
-# --- Area Utama ---
-
-st.title("🎥 Platform Rapat Online Terintegrasi")
-
-if not st.session_state.meeting_active:
-    # Tampilan Awal: Jadwal & Info
-    st.info("👋 Silakan ubah status di sidebar menjadi **'Sedang Berlangsung'** untuk memulai ruang rapat virtual.")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("### 📅 Fitur Utama")
-        st.write("""
-        - **Jadwal Rapat**: Buat dan kelola jadwal.
-        - **Ruang Virtual**: Integrasi video call tanpa instalasi tambahan.
-        - **Notulen Otomatis**: Catat poin penting selama rapat.
-        - **Chat Real-time**: Diskusi teks pendamping.
-        """)
-
+    col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown("### 📋 Daftar Rapat Terakhir")
-        # Dummy data untuk demonstrasi
-        df_history = pd.DataFrame({
-            "Topik": ["Review Q3", "Brainstorming Produk", "Onboarding Karyawan"],
-            "Tanggal": ["2023-10-25", "2023-10-26", "2023-10-27"],
-            "Peserta": ["5", "8", "12"]
-        })
-        st.dataframe(df_history, use_container_width=True)
+        st.markdown("### 🎤 Masuk sebagai Tamu")
+        name_input = st.text_input("Masukkan Nama Panggilan Anda", placeholder="Contoh: Budi, Sarah, Tim Marketing")
+
+        if st.button("🚀 Masuk Sekarang"):
+            if name_input:
+                st.session_state.username = name_input
+                st.session_state.joined = True
+                st.session_state.meeting_id = f"Rapat-{datetime.datetime.now().strftime('%H%M')}"
+                st.session_state.meeting_start = datetime.datetime.now()
+                st.rerun()
+            else:
+                st.error("Mohon masukkan nama terlebih dahulu!")
 
 else:
-    # Tampilan Aktif: Video Call & Tools
-    st.success(f"Rapat sedang berlangsung! ID Ruang: `{st.session_state.meeting_room_id}`")
+    # --- Halaman Utama Rapat ---
 
-    # Layout Grid: Video di Kiri, Tools di Kanan
-    col_video, col_tools = st.columns([3, 1])
+    # Header dengan Durasi & User
+    col_header, col_timer = st.columns([3, 1])
+    with col_header:
+        st.markdown(f"### 👋 Halo, **{st.session_state.username}**! | ID Ruang: `{st.session_state.meeting_id}`")
+    with col_timer:
+        # Hitung durasi real-time
+        if st.session_state.meeting_start:
+            duration = datetime.datetime.now() - st.session_state.meeting_start
+            hours, remainder = divmod(int(duration.total_seconds()), 3600)
+            minutes, seconds = divmod(remainder, 60)
+            st.markdown(f"⏱️ Durasi: `{hours:02d}:{minutes:02d}:{seconds:02d}`")
+
+    st.divider()
+
+    # Layout Utama: Kiri (Video), Kanan (Tools)
+    col_video, col_tools = st.columns([2, 1])
 
     with col_video:
-        st.subheader("🎥 Ruang Rapat Virtual")
-        st.markdown("""
-        Menggunakan **Jitsi Meet** (Open Source). 
-        *Catatan: Jika Anda berada di balik firewall korporat, pastikan port 443/8443 terbuka.*
-        """)
+        st.markdown("### 🎥 Ruang Rapat Virtual")
+        st.markdown("Klik tombol di dalam video untuk mengaktifkan kamera/mikrofon.")
 
-        # URL Jitsi Meet dengan ID unik
-        jitsi_url = f"https://meet.jit.si/{st.session_state.meeting_room_id}"
+        # Embed Jitsi Meet
+        jitsi_url = f"https://meet.jit.si/{st.session_state.meeting_id}"
 
-        # Embed Jitsi dalam Iframe dengan tinggi penuh
-        st.markdown(
-            f"""
-            <iframe 
-                src="{jitsi_url}" 
-                width="100%" 
-                height="600px" 
-                allow="camera; microphone; fullscreen; display-capture; autoplay" 
-                style="border: 1px solid #ddd; border-radius: 8px;">
-            </iframe>
-            """,
-            unsafe_allow_html=True
-        )
+        # Jikarame responsif
+        st.markdown(f"""
+        <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+            <iframe src="{jitsi_url}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;" allow="camera; microphone; fullscreen; display-capture; autoplay"></iframe>
+        </div>
+        """, unsafe_allow_html=True)
 
-        st.warning("💡 **Tips**: Pastikan izin kamera dan mikrofon browser Anda sudah diizinkan.")
+        st.info("💡 **Tips**: Gunakan headphone untuk pengalaman audio terbaik.")
 
     with col_tools:
-        st.subheader("📝 Notulen & Chat")
+        st.markdown("### 🛠️ Papan Kontrol Rapat")
 
-        # Tab untuk Notulen dan Chat
-        tab1, tab2 = st.tabs(["Notulen", "Chat"])
+        # Tab untuk Chat, Notulen, dan Reaksi
+        tab_chat, tab_notes, tab_react = st.tabs(["💬 Chat", "📝 Notulen", "🎉 Reaksi"])
 
-        with tab1:
-            note = st.text_area("Catat poin penting rapat:")
-            if st.button("Simpan Catatan"):
-                if note:
-                    timestamp = datetime.datetime.now().strftime("%H:%M")
-                    st.session_state.chat_history.append(f"[{timestamp}] 📝 **Catatan**: {note}")
-                    st.success("Catatan disimpan!")
-                    st.rerun()
-            else:
-                st.write("Belum ada catatan.")
+        with tab_chat:
+            st.markdown("### Obrolan Cepat")
 
-        with tab2:
-            chat_input = st.text_input("Kirim pesan ke peserta...")
+            # Render Chat History
+            chat_container = st.container()
+            with chat_container:
+                for entry in st.session_state.chat_log:
+                    style = "background: rgba(255,255,255,0.1); padding: 8px; border-radius: 8px; margin-bottom: 5px;"
+                    if entry['user'] == st.session_state.username:
+                        style += " border-left: 3px solid #00c6ff;"
+                    else:
+                        style += " border-left: 3px solid #ff4b4b;"
+
+                    st.markdown(f"""
+                    <div style="{style}">
+                        <small style="color: #aaa;">{entry['time']}</small><br>
+                        <strong>{entry['user']}:</strong> {entry['msg']}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            # Input Chat
+            new_msg = st.text_input("Ketik pesan...", key="chat_input")
             if st.button("Kirim"):
-                if chat_input:
-                    timestamp = datetime.datetime.now().strftime("%H:%M")
-                    st.session_state.chat_history.append(f"[{timestamp}] 💬 **Anda**: {chat_input}")
+                if new_msg:
+                    time_now = datetime.datetime.now().strftime("%H:%M")
+                    st.session_state.chat_log.append({
+                        "time": time_now,
+                        "user": st.session_state.username,
+                        "msg": new_msg
+                    })
                     st.rerun()
 
-            st.divider()
-            st.markdown("### Riwayat Chat")
-            for msg in st.session_state.chat_history:
-                st.markdown(msg)
+        with tab_notes:
+            st.markdown("### 📝 Catat Poin Penting")
+            note_input = st.text_area("Tulis notulen di sini...")
+            if st.button("Simpan Notulen"):
+                if note_input:
+                    time_now = datetime.datetime.now().strftime("%H:%M")
+                    st.session_state.notes.append({
+                        "time": time_now,
+                        "content": note_input
+                    })
+                    st.success("Notulen tersimpan!")
+                    st.rerun()
 
-# --- Footer ---
-st.divider()
-st.caption("Dibangun dengan Streamlit & Jitsi Meet. Aplikasi ini berjalan di browser Anda sepenuhnya.")
+            st.markdown("### Riwayat Notulen")
+            if not st.session_state.notes:
+                st.write("Belum ada notulen.")
+            else:
+                for n in st.session_state.notes:
+                    st.markdown(f"🕒 **{n['time']}**: {n['content']}")
+
+        with tab_react:
+            st.markdown("### 🎉 Reaksi Cepat")
+            st.markdown("Klik emoji untuk memberi semangat!")
+
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                if st.button("👍 Setuju", use_container_width=True):
+                    st.session_state.reactions["👍"] += 1
+                    st.toast("👍 Kamu memberi tepuk tangan!")
+                    st.rerun()
+                st.metric("Tepuk Tangan", st.session_state.reactions["👍"])
+
+            with c2:
+                if st.button("🔥 Semangat", use_container_width=True):
+                    st.session_state.reactions["🔥"] += 1
+                    st.toast("🔥 Api semangat menyala!")
+                    st.rerun()
+                st.metric("Semangat", st.session_state.reactions["🔥"])
+
+            with c3:
+                if st.button("🎉 Meriah", use_container_width=True):
+                    st.session_state.reactions["🎉"] += 1
+                    st.toast("🎉 Hore! Konfeti!")
+                    st.rerun()
+                st.metric("Meriah", st.session_state.reactions["🎉"])
+
+    # Footer dengan Statistik
+    st.divider()
+    col_stats1, col_stats2, col_stats3 = st.columns(3)
+    with col_stats1:
+        st.markdown('<div class="stat-card"><div class="stat-value">👥 1</div><small>Peserta Aktif</small></div>', unsafe_allow_html=True)
+    with col_stats2:
+        st.markdown('<div class="stat-card"><div class="stat-value">📝 0</div><small>Catatan</small></div>', unsafe_allow_html=True)
+    with col_stats3:
+        st.markdown('<div class="stat-card"><div class="stat-value">💬 0</div><small>Pesan</small></div>', unsafe_allow_html=True)
+
+    # Tombol Keluar
+    if st.button("🚪 Keluar Rapat", type="secondary", use_container_width=True):
+        st.session_state.joined = False
+        st.session_state.chat_log = []
+        st.session_state.notes = []
+        st.session_state.reactions = {"👍": 0, "🔥": 0, "🎉": 0}
+        st.rerun()
+
+# --- Auto Refresh untuk Timer ---
+# Streamlit tidak memiliki loop real-time native, jadi kita gunakan trick session_state
+# atau biarkan user refresh manual untuk update timer (untuk demo ini cukup manual)
+# Jika ingin timer update otomatis, bisa gunakan st.empty() dalam loop, tapi akan reload halaman.
