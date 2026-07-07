@@ -3,6 +3,4 @@ pandas
 gspread
 google-auth
 google-auth-oauthlib
-opencv-python-headless
-pyzbar
 Pillow
