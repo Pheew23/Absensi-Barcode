@@ -104,25 +104,42 @@ if 'notes' not in st.session_state:
 if 'reactions' not in st.session_state:
     st.session_state.reactions = {"👍": 0, "🔥": 0, "🎉": 0}
 
-# --- Halaman Login (Sederhana & Cepat) ---
+# --- Bagian Login yang Dimodifikasi ---
 if not st.session_state.joined:
-    st.markdown("<h1 style='text-align: center;'>🚀 Selamat Datang di RapatHub</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #ccc;'>Rapat Online Instan Tanpa Login. Cukup masukkan nama Anda!</p>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>🚀 RapatHub: Masuk Tanpa Login</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #ccc;'>Masuk ke ruang rapat yang sudah dibuat Host.</p>", unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown("### 🎤 Masuk sebagai Tamu")
-        name_input = st.text_input("Masukkan Nama Panggilan Anda", placeholder="Contoh: Budi, Sarah, Tim Marketing")
+        st.markdown("### 🎤 Masukkan Detail Rapat")
+
+        # 1. Input Nama
+        name_input = st.text_input("Nama Anda", placeholder="Contoh: Budi")
+
+        # 2. Input Kode Ruang (Ini kuncinya!)
+        # Kita cek apakah ada kode dari URL (untuk sharing link)
+        query_params = st.query_params
+        room_code_from_url = query_params.get("room", [""])[0]
+
+        room_input = st.text_input("Kode Ruang Rapat", value=room_code_from_url, placeholder="Contoh: RapatTimMarketing")
 
         if st.button("🚀 Masuk Sekarang"):
-            if name_input:
+            if name_input and room_input:
+                # Simpan data
                 st.session_state.username = name_input
                 st.session_state.joined = True
-                st.session_state.meeting_id = f"Rapat-{datetime.datetime.now().strftime('%H%M')}"
+                st.session_state.meeting_id = room_input # Gunakan kode yang dimasukkan
+
+                # Tambahkan kode ke URL agar bisa dibagikan lagi jika perlu
+                st.query_params["room"] = room_input
+
                 st.session_state.meeting_start = datetime.datetime.now()
+                st.session_state.chat_log = [] # Reset chat (opsional)
+                st.session_state.notes = []
+                st.success(f"Berhasil masuk ke ruang: **{room_input}**!")
                 st.rerun()
             else:
-                st.error("Mohon masukkan nama terlebih dahulu!")
+                st.error("Mohon isi Nama dan Kode Ruang!")
 
 else:
     # --- Halaman Utama Rapat ---
