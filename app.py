@@ -1,162 +1,148 @@
 import streamlit as st
 import pandas as pd
-import gspread
-from google.oauth2.service_account import Credentials
-from datetime import datetime
-import json
+import datetime
+import time
 
-# --- KONFIGURASI ---
-st.set_page_config(page_title="Absensi Siswa", page_icon="🏫", layout="wide")
+# Konfigurasi Halaman
+st.set_page_config(
+    page_title="RapatOnline Pro",
+    page_icon="🎥",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-st.title("🏫 Absensi Siswa Cepat")
-st.markdown("""
-**Cara Menggunakan:**
-1. Scan QR Code siswa menggunakan aplikasi kamera/QR Reader di HP Anda.
-2. Salin NISN yang muncul.
-3. Tempel (Paste) di kolom di bawah ini dan tekan 'Absen'.
-""")
+# --- Inisialisasi Session State ---
+if 'meeting_active' not in st.session_state:
+    st.session_state.meeting_active = False
+if 'meeting_room_id' not in st.session_state:
+    st.session_state.meeting_room_id = ""
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+if 'participants' not in st.session_state:
+    st.session_state.participants = []
 
-# --- SIDEBAR ---
-st.sidebar.header("⚙️ Pengaturan")
-sheet_id = st.sidebar.text_input("ID Google Sheet:", placeholder="Masukkan ID Sheet di sini...")
-use_mock = st.sidebar.checkbox("Mode Simulasi (Tanpa Database)", value=False)
+# --- Sidebar: Informasi & Kontrol ---
+st.sidebar.title("🎛️ Kontrol Rapat")
+st.sidebar.markdown("### Status Sistem")
 
-if not sheet_id and not use_mock:
-    st.warning("⚠️ Harap masukkan ID Google Sheet atau aktifkan Mode Simulasi untuk melanjutkan.")
-    st.stop()
+status_options = ["Menunggu", "Sedang Berlangsung", "Selesai"]
+current_status = st.sidebar.selectbox("Status Rapat", status_options, index=1 if st.session_state.meeting_active else 0)
 
-# --- FUNGSI KONEKSI GOOGLE SHEETS ---
-def get_data_siswa():
-    if use_mock:
-        return pd.DataFrame({'NISN': ['1001', '1002', '1003'], 'Nama': ['Budi', 'Siti', 'Ahmad'], 'Kelas': ['10A', '10B', '10A']})
+# Update status berdasarkan input
+if current_status == "Sedang Berlangsung" and not st.session_state.meeting_active:
+    st.session_state.meeting_active = True
+    st.session_state.meeting_room_id = f"rapat-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+elif current_status != "Sedang Berlangsung":
+    st.session_state.meeting_active = False
+    st.session_state.meeting_room_id = ""
 
-    try:
-        json_str = st.secrets["creds"]
-        creds_dict = json.loads(json_str)
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-        client = gspread.authorize(creds)
-        sh = client.open_by_key(sheet_id)
-        sheet_master = sh.worksheet("DataSiswa")
-        return pd.DataFrame(sheet_master.get_all_records())
-    except Exception as e:
-        st.error(f"⚠️ Gagal mengambil data siswa: {e}")
-        return None
+st.sidebar.divider()
 
-def save_absensi(nisn, nama, kelas, waktu):
-    try:
-        json_str = st.secrets["creds"]
-        creds_dict = json.loads(json_str)
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-        client = gspread.authorize(creds)
-        sh = client.open_by_key(sheet_id)
-        sheet_absen = sh.worksheet("Absensi")
+# Input Peserta
+st.sidebar.subheader("Daftar Peserta")
+new_participant = st.sidebar.text_input("Tambah Peserta Baru")
+if st.sidebar.button("Tambah"):
+    if new_participant:
+        st.session_state.participants.append(new_participant)
+        st.sidebar.success(f"{new_participant} ditambahkan!")
 
-        # Cek duplikasi hari ini (Sederhana)
-        data_absen = pd.DataFrame(sheet_absen.get_all_records())
-        today = datetime.now().strftime("%Y-%m-%d")
+# Tampilkan daftar peserta
+if st.session_state.participants:
+    st.sidebar.markdown("### Daftar Hadir")
+    for i, p in enumerate(st.session_state.participants):
+        st.sidebar.write(f"{i+1}. {p}")
 
-        # Cek apakah sudah absen hari ini
-        sudah_absen = False
-        if not data_absen.empty:
-            # Cek apakah ada baris dengan NISN yang sama dan tanggal hari ini
-            # Kita asumsikan kolom 'Waktu' berisi format YYYY-MM-DD HH:MM:SS
-            for index, row in data_absen.iterrows():
-                if str(row['NISN']) == str(nisn) and today in str(row['Waktu']):
-                    sudah_absen = True
-                    break
+# --- Area Utama ---
 
-        if sudah_absen:
-            return "sudah_absen", None
+st.title("🎥 Platform Rapat Online Terintegrasi")
 
-        sheet_absen.append_row([waktu, str(nisn), nama, kelas])
-        return "sukses", None
-    except Exception as e:
-        return "error", str(e)
+if not st.session_state.meeting_active:
+    # Tampilan Awal: Jadwal & Info
+    st.info("👋 Silakan ubah status di sidebar menjadi **'Sedang Berlangsung'** untuk memulai ruang rapat virtual.")
 
-# --- LOGIKA UTAMA ---
-data_siswa_db = get_data_siswa()
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("### 📅 Fitur Utama")
+        st.write("""
+        - **Jadwal Rapat**: Buat dan kelola jadwal.
+        - **Ruang Virtual**: Integrasi video call tanpa instalasi tambahan.
+        - **Notulen Otomatis**: Catat poin penting selama rapat.
+        - **Chat Real-time**: Diskusi teks pendamping.
+        """)
 
-col1, col2 = st.columns([1, 1])
+    with col2:
+        st.markdown("### 📋 Daftar Rapat Terakhir")
+        # Dummy data untuk demonstrasi
+        df_history = pd.DataFrame({
+            "Topik": ["Review Q3", "Brainstorming Produk", "Onboarding Karyawan"],
+            "Tanggal": ["2023-10-25", "2023-10-26", "2023-10-27"],
+            "Peserta": ["5", "8", "12"]
+        })
+        st.dataframe(df_history, use_container_width=True)
 
-with col1:
-    st.subheader("📝 Input Absensi")
-    nisn_input = st.text_input("Tempel NISN Siswa di sini:", placeholder="Contoh: 1001", key="input_nisn")
-
-    if st.button("✅ Absen Sekarang", type="primary"):
-        if not nisn_input:
-            st.warning("⚠️ Harap masukkan NISN.")
-        elif data_siswa_db is None:
-            st.error("⚠️ Database tidak tersedia.")
-        else:
-            # Validasi Siswa
-            if str(nisn_input) in data_siswa_db['NISN'].astype(str).values:
-                siswa = data_siswa_db[data_siswa_db['NISN'].astype(str) == str(nisn_input)].iloc[0]
-                nama = siswa['Nama']
-                kelas = siswa['Kelas']
-                waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-                if use_mock:
-                    st.balloons()
-                    st.success(f"🎉 **Berhasil!**\n\n**Nama:** {nama}\n**Kelas:** {kelas}\n**Waktu:** {waktu}\n*(Mode Simulasi)*")
-                else:
-                    status, err_msg = save_absensi(nisn_input, nama, kelas, waktu)
-
-                    if status == "sukses":
-                        st.balloons()
-                        st.success(f"🎉 **Berhasil!**\n\n**Nama:** {nama}\n**Kelas:** {kelas}\n**Waktu:** {waktu}")
-                        st.success("✅ Data tersimpan ke Google Sheets.")
-                        # Reset input
-                        st.rerun()
-                    elif status == "sudah_absen":
-                        st.warning(f"⚠️ **Sudah Absen!**\n\nSiswa **{nama}** sudah melakukan absensi hari ini.")
-                    else:
-                        st.error(f"❌ Gagal menyimpan data: {err_msg}")
-            else:
-                st.error(f"❌ **NISN Tidak Ditemukan!**\n\nSiswa dengan NISN '{nisn_input}' tidak ada di database.")
-
-with col2:
-    st.subheader("📊 Daftar Siswa Terdaftar")
-    if data_siswa_db is not None and not data_siswa_db.empty:
-        st.dataframe(data_siswa_db, use_container_width=True)
-    else:
-        st.info("Belum ada data siswa atau mode simulasi aktif.")
-
-# --- LAPORAN REAL-TIME ---
-st.divider()
-st.subheader("📋 Laporan Absensi Hari Ini")
-
-if use_mock:
-    st.dataframe(pd.DataFrame({'Waktu': ['07:00'], 'NISN': ['1001'], 'Nama': ['Budi'], 'Kelas': ['10A']}))
 else:
-    try:
-        json_str = st.secrets["creds"]
-        creds_dict = json.loads(json_str)
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-        client = gspread.authorize(creds)
-        sh = client.open_by_key(sheet_id)
-        sheet_absen = sh.worksheet("Absensi")
-        df = pd.DataFrame(sheet_absen.get_all_records())
+    # Tampilan Aktif: Video Call & Tools
+    st.success(f"Rapat sedang berlangsung! ID Ruang: `{st.session_state.meeting_room_id}`")
 
-        if not df.empty:
-            # Filter hanya hari ini (opsional, tapi bagus)
-            today_str = datetime.now().strftime("%Y-%m-%d")
-            df_hari_ini = df[df['Waktu'].astype(str).str.contains(today_str)]
+    # Layout Grid: Video di Kiri, Tools di Kanan
+    col_video, col_tools = st.columns([3, 1])
 
-            st.dataframe(df_hari_ini, use_container_width=True)
+    with col_video:
+        st.subheader("🎥 Ruang Rapat Virtual")
+        st.markdown("""
+        Menggunakan **Jitsi Meet** (Open Source). 
+        *Catatan: Jika Anda berada di balik firewall korporat, pastikan port 443/8443 terbuka.*
+        """)
 
-            # Tombol Download
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                "📥 Unduh Semua Data (CSV)",
-                csv,
-                "laporan_absensi.csv",
-                "text/csv",
-                key='download-csv'
-            )
-        else:
-            st.info("Belum ada data absensi hari ini.")
-    except Exception as e:
-        st.error(f"⚠️ Gagal memuat laporan: {e}")
+        # URL Jitsi Meet dengan ID unik
+        jitsi_url = f"https://meet.jit.si/{st.session_state.meeting_room_id}"
+
+        # Embed Jitsi dalam Iframe dengan tinggi penuh
+        st.markdown(
+            f"""
+            <iframe 
+                src="{jitsi_url}" 
+                width="100%" 
+                height="600px" 
+                allow="camera; microphone; fullscreen; display-capture; autoplay" 
+                style="border: 1px solid #ddd; border-radius: 8px;">
+            </iframe>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.warning("💡 **Tips**: Pastikan izin kamera dan mikrofon browser Anda sudah diizinkan.")
+
+    with col_tools:
+        st.subheader("📝 Notulen & Chat")
+
+        # Tab untuk Notulen dan Chat
+        tab1, tab2 = st.tabs(["Notulen", "Chat"])
+
+        with tab1:
+            note = st.text_area("Catat poin penting rapat:")
+            if st.button("Simpan Catatan"):
+                if note:
+                    timestamp = datetime.datetime.now().strftime("%H:%M")
+                    st.session_state.chat_history.append(f"[{timestamp}] 📝 **Catatan**: {note}")
+                    st.success("Catatan disimpan!")
+                    st.rerun()
+            else:
+                st.write("Belum ada catatan.")
+
+        with tab2:
+            chat_input = st.text_input("Kirim pesan ke peserta...")
+            if st.button("Kirim"):
+                if chat_input:
+                    timestamp = datetime.datetime.now().strftime("%H:%M")
+                    st.session_state.chat_history.append(f"[{timestamp}] 💬 **Anda**: {chat_input}")
+                    st.rerun()
+
+            st.divider()
+            st.markdown("### Riwayat Chat")
+            for msg in st.session_state.chat_history:
+                st.markdown(msg)
+
+# --- Footer ---
+st.divider()
+st.caption("Dibangun dengan Streamlit & Jitsi Meet. Aplikasi ini berjalan di browser Anda sepenuhnya.")
