@@ -3,14 +3,34 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-import cv2
 import numpy as np
-from pyzbar.pyzbar import decode
+
+# --- Cek Import Library Scan (Agar tidak langsung crash) ---
+try:
+    import cv2
+    from pyzbar.pyzbar import decode
+    SCAN_SUPPORTED = True
+except ImportError:
+    SCAN_SUPPORTED = False
+    st.warning("⚠️ **PENTING:** Library scanner (opencv/pyzbar) tidak terinstall di server ini. Silakan cek file requirements.txt.")
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Absensi QR Code", page_icon="🏫", layout="wide")
 
 st.title("🏫 Sistem Absensi Siswa via QR Code")
+
+if not SCAN_SUPPORTED:
+    st.error("❌ Aplikasi tidak bisa berjalan karena library scanner tidak ditemukan.")
+    st.markdown("""
+    **Solusi:**
+    1. Pastikan file `requirements.txt` di GitHub Anda berisi:
+       - `opencv-python-headless`
+       - `pyzbar`
+       - `Pillow`
+    2. Klik **Settings** > **Deploy** > **Re-deploy** setelah mengubah requirements.txt.
+    """)
+    st.stop()
+
 st.markdown("Arahkan kamera ke QR Code siswa untuk absen.")
 
 # --- SIDEBAR ---
@@ -38,21 +58,17 @@ def get_data_siswa():
         sheet_master = sh.worksheet("DataSiswa")
         return pd.DataFrame(sheet_master.get_all_records())
     except Exception as e:
-        st.error(f"Gagal koneksi: {e}")
+        st.error(f"Gagal koneksi ke Sheets: {e}")
         return None
 
 # --- FUNGSI SCAN GAMBAR ---
 def scan_qr_from_image(image_bytes):
     try:
-        # Konversi bytes ke array numpy
         nparr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-        # Decode QR Code
         decoded_objects = decode(img)
 
         if decoded_objects:
-            # Ambil data dari objek pertama yang ditemukan
             return decoded_objects[0].data.decode('utf-8')
         return None
     except Exception as e:
@@ -93,11 +109,6 @@ if camera_input:
                             sh = client.open_by_key(sheet_id)
                             sheet_absen = sh.worksheet("Absensi")
 
-                            # Cek duplikasi (sederhana)
-                            data_absen = pd.DataFrame(sheet_absen.get_all_records())
-                            today = datetime.now().strftime("%Y-%m-%d")
-                            # Logika cek duplikasi bisa diperbaiki di sini
-
                             sheet_absen.append_row([waktu, str(qr_data), nama, kelas])
                             st.balloons()
                             st.success(f"✅ Berhasil! {nama} ({kelas}) absen pukul {waktu}")
@@ -109,7 +120,7 @@ if camera_input:
             else:
                 st.error("❌ Database siswa tidak dapat dimuat.")
         else:
-            st.warning("⚠️ QR Code tidak terbaca. Pastikan pencahayaan cukup dan kode jelas.")
+            st.warning("⚠️ QR Code tidak terbaca. Pastikan pencahayaan cukup.")
 
 # --- LAPORAN ---
 st.divider()
