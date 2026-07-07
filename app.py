@@ -3,35 +3,13 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-import numpy as np
+import json
 
-# --- Cek Import Library Scan (Agar tidak langsung crash) ---
-try:
-    import cv2
-    from pyzbar.pyzbar import decode
-    SCAN_SUPPORTED = True
-except ImportError:
-    SCAN_SUPPORTED = False
-    st.warning("⚠️ **PENTING:** Library scanner (opencv/pyzbar) tidak terinstall di server ini. Silakan cek file requirements.txt.")
-
-# --- KONFIGURASI HALAMAN ---
+# --- KONFIGURASI ---
 st.set_page_config(page_title="Absensi QR Code", page_icon="🏫", layout="wide")
 
 st.title("🏫 Sistem Absensi Siswa via QR Code")
-
-if not SCAN_SUPPORTED:
-    st.error("❌ Aplikasi tidak bisa berjalan karena library scanner tidak ditemukan.")
-    st.markdown("""
-    **Solusi:**
-    1. Pastikan file `requirements.txt` di GitHub Anda berisi:
-       - `opencv-python-headless`
-       - `pyzbar`
-       - `Pillow`
-    2. Klik **Settings** > **Deploy** > **Re-deploy** setelah mengubah requirements.txt.
-    """)
-    st.stop()
-
-st.markdown("Arahkan kamera ke QR Code siswa untuk absen.")
+st.markdown("Scan QR Code siswa untuk absen.")
 
 # --- SIDEBAR ---
 st.sidebar.header("⚙️ Pengaturan")
@@ -42,6 +20,15 @@ if not sheet_id and not use_mock:
     st.warning("⚠️ Masukkan ID Google Sheet atau aktifkan Mode Simulasi.")
     st.stop()
 
+# --- IMPORT LIBRARY SCANNER (Versi Ringan) ---
+# Kita akan mencoba import, jika gagal, kita pakai fallback manual
+try:
+    from streamlit_qr_scanner import qr_scanner
+    HAS_SCANNER = True
+except ImportError:
+    HAS_SCANNER = False
+    st.warning("⚠️ Library scanner tidak ditemukan. Gunakan Mode Simulasi atau ketik manual.")
+
 # --- FUNGSI KONEKSI GOOGLE SHEETS ---
 def get_data_siswa():
     if use_mock:
@@ -49,7 +36,6 @@ def get_data_siswa():
 
     try:
         json_str = st.secrets["creds"]
-        import json
         creds_dict = json.loads(json_str)
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
@@ -58,69 +44,70 @@ def get_data_siswa():
         sheet_master = sh.worksheet("DataSiswa")
         return pd.DataFrame(sheet_master.get_all_records())
     except Exception as e:
-        st.error(f"Gagal koneksi ke Sheets: {e}")
-        return None
-
-# --- FUNGSI SCAN GAMBAR ---
-def scan_qr_from_image(image_bytes):
-    try:
-        nparr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        decoded_objects = decode(img)
-
-        if decoded_objects:
-            return decoded_objects[0].data.decode('utf-8')
-        return None
-    except Exception as e:
-        st.error(f"Error saat memproses gambar: {e}")
+        st.error(f"Gagal koneksi: {e}")
         return None
 
 # --- LOGIKA UTAMA ---
 data_siswa_db = get_data_siswa()
 
 st.subheader("📸 Scan QR Code Siswa")
-camera_input = st.camera_input("Ambil Gambar QR Code")
 
-if camera_input:
-    with st.spinner("Sedang memindai..."):
-        qr_data = scan_qr_from_image(camera_input.getvalue())
+qr_data = None
 
-        if qr_data:
-            st.success(f"✅ QR Code Terbaca: **{qr_data}**")
+if HAS_SCANNER:
+    # Gunakan komponen scanner
+    result = qr_scanner("Scan QR Code di sini")
+    if result:
+        qr_data = result['data']
+        st.success(f"✅ Terdeteksi: {qr_data}")
+else:
+    # Fallback: Upload Gambar atau Input Manual
+    st.info("📷 Mode Manual (Scanner tidak aktif di server ini).")
+    option = st.radio("Pilih cara input:", ["Upload Gambar QR", "Ketik NISN Manual"])
 
-            if data_siswa_db is not None:
-                if str(qr_data) in data_siswa_db['NISN'].astype(str).values:
-                    siswa = data_siswa_db[data_siswa_db['NISN'].astype(str) == str(qr_data)].iloc[0]
-                    nama = siswa['Nama']
-                    kelas = siswa['Kelas']
-                    waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if option == "Ketik NISN Manual":
+        qr_data = st.text_input("Masukkan NISN Siswa:", placeholder="Contoh: 1001")
+    elif option == "Upload Gambar QR":
+        uploaded_file = st.file_uploader("Upload Foto QR Code", type=['png', 'jpg', 'jpeg'])
+        if uploaded_file:
+            # Di sini kita bisa coba decode manual dengan library ringan jika ada, 
+            # atau biarkan user mengetik hasil scan dari gambar.
+            st.warning("⚠️ Karena keterbatasan server, silakan baca QR dari foto dan ketik NISN-nya di bawah.")
+            qr_data = st.text_input("Ketik NISN dari foto:", placeholder="Contoh: 1001")
 
-                    if use_mock:
-                        st.balloons()
-                        st.success(f"Simulasi: {nama} ({kelas}) absen pukul {waktu}")
-                    else:
-                        try:
-                            json_str = st.secrets["creds"]
-                            import json
-                            creds_dict = json.loads(json_str)
-                            scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-                            creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-                            client = gspread.authorize(creds)
-                            sh = client.open_by_key(sheet_id)
-                            sheet_absen = sh.worksheet("Absensi")
+# --- PROSES ABSENSI ---
+if qr_data:
+    st.divider()
+    if data_siswa_db is not None:
+        if str(qr_data) in data_siswa_db['NISN'].astype(str).values:
+            siswa = data_siswa_db[data_siswa_db['NISN'].astype(str) == str(qr_data)].iloc[0]
+            nama = siswa['Nama']
+            kelas = siswa['Kelas']
+            waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                            sheet_absen.append_row([waktu, str(qr_data), nama, kelas])
-                            st.balloons()
-                            st.success(f"✅ Berhasil! {nama} ({kelas}) absen pukul {waktu}")
-                            st.success("Data tersimpan ke Google Sheets.")
-                        except Exception as e:
-                            st.error(f"Gagal simpan ke Sheets: {e}")
-                else:
-                    st.error("❌ NISN tidak ditemukan.")
+            if use_mock:
+                st.balloons()
+                st.success(f"Simulasi: {nama} ({kelas}) absen pukul {waktu}")
             else:
-                st.error("❌ Database siswa tidak dapat dimuat.")
+                try:
+                    json_str = st.secrets["creds"]
+                    creds_dict = json.loads(json_str)
+                    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+                    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+                    client = gspread.authorize(creds)
+                    sh = client.open_by_key(sheet_id)
+                    sheet_absen = sh.worksheet("Absensi")
+
+                    sheet_absen.append_row([waktu, str(qr_data), nama, kelas])
+                    st.balloons()
+                    st.success(f"✅ Berhasil! {nama} ({kelas}) absen pukul {waktu}")
+                    st.success("Data tersimpan ke Google Sheets.")
+                except Exception as e:
+                    st.error(f"Gagal simpan: {e}")
         else:
-            st.warning("⚠️ QR Code tidak terbaca. Pastikan pencahayaan cukup.")
+            st.error(f"❌ NISN {qr_data} tidak ditemukan di database.")
+    else:
+        st.error("❌ Database siswa tidak dapat dimuat.")
 
 # --- LAPORAN ---
 st.divider()
@@ -130,7 +117,6 @@ if use_mock:
 else:
     try:
         json_str = st.secrets["creds"]
-        import json
         creds_dict = json.loads(json_str)
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
@@ -140,4 +126,4 @@ else:
         df = pd.DataFrame(sheet_absen.get_all_records())
         st.dataframe(df)
     except:
-        st.info("Belum ada data atau error koneksi.")
+        st.info("Belum ada data.")
