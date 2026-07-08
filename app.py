@@ -20,7 +20,7 @@ st.markdown("""
 col1, col2 = st.columns([3, 1])
 
 with col1:
-    participant_name = st.text_input("Nama Anda (Nama Peserta)", placeholder="Masukkan nama panggilan...", key="name_input")
+    participant_name = st.text_input("Nama Anda (Nama Siswa)", placeholder="Masukkan nama panggilan...", key="name_input")
 
 with col2:
     st.markdown("<br>", unsafe_allow_html=True)
@@ -40,7 +40,7 @@ with col_room1:
     # Cek apakah ada ID di session state (dari tombol random atau input sebelumnya)
     default_room = st.session_state.get("room_id", "")
     room_id = st.text_input(
-        "Masukkan ID Ruang Meeting (Contoh: ruang-kerja-123)", 
+        "Masukkan Kelas (Contoh: 1A)", 
         value=default_room,
         placeholder="Ketik ID ruangan atau gunakan tombol 'Buat ID Acak' di atas",
         key="room_input"
