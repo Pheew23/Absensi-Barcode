@@ -4,7 +4,7 @@ import csv
 import io
 from datetime import datetime
 
-# --- Konfigurasi Halaman (Mobile First) ---
+# --- Konfigurasi Halaman ---
 st.set_page_config(
     page_title="Meeting Mobile",
     page_icon="📱",
@@ -12,29 +12,15 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS Khusus untuk HP agar Video Tidak Terpotong ---
+# --- CSS untuk Perbaikan Tampilan Mobile ---
 st.markdown("""
 <style>
-    /* Menghilangkan padding berlebih di mobile */
     .block-container {
         padding-top: 1rem;
         padding-bottom: 1rem;
         padding-left: 0.5rem;
         padding-right: 0.5rem;
     }
-
-    /* Memaksa video container memenuhi lebar */
-    [data-testid="stVerticalBlock"] > div > div {
-        width: 100%;
-    }
-
-    /* Perbaikan tinggi Iframe Jitsi */
-    iframe {
-        border-radius: 8px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-    }
-
-    /* Tombol lebih besar untuk jari */
     .stButton > button {
         height: 50px;
         font-size: 16px;
@@ -46,7 +32,7 @@ st.markdown("""
 st.title("📱 Meeting Jitsi & Catatan")
 st.caption("Mode Tanpa Database: Data absensi hanya tersimpan di HP Anda.")
 
-# --- State Management ---
+# --- Inisialisasi State ---
 if 'room_id' not in st.session_state:
     st.session_state['room_id'] = ""
 if 'user_name' not in st.session_state:
@@ -56,24 +42,23 @@ if 'is_meeting' not in st.session_state:
 if 'my_attendance' not in st.session_state:
     st.session_state['my_attendance'] = []
 
-# --- Layout: Jika Meeting Aktif -> Tampilan Video Penuh ---
+# --- LOGIKA UTAMA ---
+
+# 1. Jika Meeting Aktif -> Tampilkan Video
 if st.session_state['is_meeting']:
     room_id = st.session_state['room_id']
     user_name = st.session_state['user_name']
     domain = "meet.jit.si"
 
-    # Header Minimalis
     st.markdown(f"### 🟢 Ruangan: `{room_id}`")
 
-    # Tombol Keluar (Penting agar mudah diakses)
     if st.button("🛑 Keluar Meeting", use_container_width=True, type="secondary"):
         st.session_state['is_meeting'] = False
         st.rerun()
 
     st.divider()
 
-    # --- VIDEO JITSI (FULL SCREEN MOBILE) ---
-    # Tinggi diatur 80vh (80% tinggi layar HP) agar tidak terpotong header/footer
+    # Embed Jitsi dengan tinggi besar (80vh)
     jitsi_code = f"""
     <div style="width: 100%; height: 80vh; overflow: hidden; border-radius: 12px; position: relative;">
         <div id="jitsi-container" style="width: 100%; height: 100%;"></div>
@@ -113,12 +98,11 @@ if st.session_state['is_meeting']:
     """
     st.components.v1.html(jitsi_code, height=650, scrolling=False)
 
-    # Catatan Tambahan di Bawah Video (Scrollable)
     st.divider()
     st.subheader("📝 Catatan Absensi Pribadi (HP Anda)")
-    st.info("⚠️ Catatan ini hanya tersimpan di HP Anda. Untuk absensi global, silakan salin nama ke WhatsApp grup.")
+    st.info("⚠️ Catatan ini hanya tersimpan di HP Anda. Salin ke WhatsApp jika perlu.")
 
-    # Form Tambah Catatan Pribadi
+    # Form Tambah Catatan
     with st.form("note_form", clear_on_submit=True):
         note_name = st.text_input("Nama yang hadir")
         note_role = st.selectbox("Peran", ["Peserta", "Narasumber"])
@@ -133,13 +117,13 @@ if st.session_state['is_meeting']:
             st.success("Catatan ditambahkan!")
             st.rerun()
 
-    # Tampilkan Daftar Catatan Pribadi
+    # Tampilkan Daftar Catatan
     if st.session_state['my_attendance']:
         st.markdown("**Daftar yang tercatat di HP ini:**")
         for i, item in enumerate(st.session_state['my_attendance']):
             st.markdown(f"{i+1}. **{item['nama']}** ({item['role']}) - {item['waktu']}")
 
-        # Export Catatan Pribadi
+        # Export CSV
         csv_buffer = io.StringIO()
         writer = csv.writer(csv_buffer)
         writer.writerow(["No", "Waktu", "Nama", "Peran"])
@@ -158,20 +142,21 @@ if st.session_state['is_meeting']:
             st.session_state['my_attendance'] = []
             st.rerun()
 
+# 2. Jika Belum Masuk -> Tampilkan Form Login
 else:
-    # --- LAYAR AWAL (INPUT) ---
     st.markdown("### 📝 Masuk ke Rapat")
 
-    # Input ID Ruangan
     col1, col2 = st.columns([3, 1])
     with col1:
         room_input = st.text_input("ID Ruangan (Harus Sama)", placeholder="Contoh: rapat-123")
+
     with col2:
         if st.button("🎲 Acak ID"):
             st.session_state['temp_id'] = f"rapat-{uuid.uuid4().hex[:6]}"
             st.rerun()
 
-    if st.session_state.get('temp_id'):
+    # Handle ID Acak
+    if 'temp_id' in st.session_state:
         room_input = st.session_state['temp_id']
         st.warning(f"ID Ruangan: `{room_input}` (Salin ID ini dan kirim ke peserta lain)")
         del st.session_state['temp_id']
@@ -180,7 +165,6 @@ else:
     if room_input:
         st.session_state['room_id'] = room_input.strip()
 
-    # Form Login
     with st.form("login_form"):
         name_input = st.text_input("Nama Lengkap Anda", placeholder="Contoh: Budi")
         role_input = st.selectbox("Peran", ["Peserta", "Narasumber", "Moderator"])
