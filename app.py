@@ -1,77 +1,99 @@
 import streamlit as st
 import uuid
-import os
 
-# Konfigurasi Halaman
+# --- Konfigurasi Halaman ---
 st.set_page_config(
-    page_title="Video Meeting Jitsi - Streamlit",
+    page_title="Jitsi Meeting Pro",
     page_icon="📹",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-st.title("📹 Aplikasi Video Meeting Jitsi")
+# --- Header & Styling ---
+st.title("🎥 Video Meeting Jitsi Meet")
 st.markdown("""
-Aplikasi ini mengintegrasikan **Jitsi Meet** ke dalam Streamlit.
-Silakan masukkan nama Anda dan ID Ruangan untuk bergabung.
+> Aplikasi ini memungkinkan Anda membuat atau bergabung ke ruang konferensi video secara instan.
+> **Tips:** Gunakan ID ruangan yang unik agar tidak bentrok dengan orang lain.
 """)
 
-# Sidebar untuk pengaturan
-with st.sidebar:
-    st.header("🔧 Pengaturan Meeting")
-    participant_name = st.text_input("Nama Peserta", value="Pengguna Streamlit")
+# --- Kontrol Input (Dibuat di bagian atas, bukan sidebar) ---
+col1, col2 = st.columns([3, 1])
 
-    # Opsi ID Ruangan: Random atau Manual
-    room_option = st.radio("Pilih ID Ruangan:", ["Acak (Random ID)", "Input Manual"])
+with col1:
+    participant_name = st.text_input("Nama Anda (Nama Peserta)", placeholder="Masukkan nama panggilan...", key="name_input")
 
-    jitsi_domain = st.text_input("Domain Jitsi", value="meet.jit.si")
+with col2:
+    st.markdown("<br>", unsafe_allow_html=True)
+    # Tombol untuk membuat ID acak
+    if st.button("🎲 Buat ID Acak", key="random_id_btn"):
+        new_id = f"meeting-{uuid.uuid4().hex[:8]}"
+        st.session_state.room_id = new_id
+        st.rerun()
 
-    generate_btn = st.button("🚀 Mulai Meeting")
+# Input ID Ruangan
+st.divider()
+st.subheader("📍 Masuk ke Ruang Meeting")
 
-# Logika Utama
-if generate_btn:
-    if not participant_name:
-        st.error("⚠️ Nama peserta tidak boleh kosong!")
+col_room1, col_room2 = st.columns([4, 1])
+
+with col_room1:
+    # Cek apakah ada ID di session state (dari tombol random atau input sebelumnya)
+    default_room = st.session_state.get("room_id", "")
+    room_id = st.text_input(
+        "Masukkan ID Ruang Meeting (Contoh: ruang-kerja-123)", 
+        value=default_room,
+        placeholder="Ketik ID ruangan atau gunakan tombol 'Buat ID Acak' di atas",
+        key="room_input"
+    )
+
+with col_room2:
+    st.markdown("<br>", unsafe_allow_html=True)
+    join_btn = st.button("🚀 Bergabung Sekarang", type="primary", use_container_width=True)
+
+# --- Logika Penampilan Jitsi ---
+if join_btn:
+    if not participant_name.strip():
+        st.error("⚠️ **Harap isi Nama Anda terlebih dahulu!**")
+    elif not room_id.strip():
+        st.error("⚠️ **Harap isi ID Ruangan!**")
     else:
-        # Menentukan ID Ruangan
-        if room_option == "Acak (Random ID)":
-            room_id = f"ruang-meeting-{uuid.uuid4().hex[:8]}"
-            st.success(f"✅ Ruangan dibuat: `{room_id}`")
-        else:
-            room_id = st.text_input("Masukkan ID Ruangan Manual", key="manual_room")
-            if not room_id:
-                st.warning("⚠️ ID ruangan manual belum diisi.")
-                st.stop()
+        # Membersihkan ID ruangan (menghilangkan spasi di awal/akhir)
+        clean_room_id = room_id.strip()
 
-        # Mengonstruksi URL Jitsi
-        # Format: https://meet.jit.si/RoomName
-        jitsi_url = f"https://{jitsi_domain}/{room_id}"
+        # Konfigurasi Jitsi
+        # Kita menggunakan meet.jit.si (Server Publik)
+        domain = "meet.jit.si"
+        url = f"https://{domain}/{clean_room_id}"
 
-        st.divider()
+        st.success(f"✅ Bergabung ke ruang: **`{clean_room_id}`**")
+        st.info(f"👤 Anda masuk sebagai: **{participant_name}**")
 
-        # Kontainer untuk Iframe Jitsi
-        st.markdown(f"### 🗣️ Ruang Meeting: `{room_id}`")
-        st.markdown(f"**Siap bergabung sebagai:** {participant_name}")
+        # --- Embed Jitsi dengan Tinggi Besar ---
+        st.markdown("### 📹 Ruang Video Aktif")
 
-        # Embed Jitsi Meet External API
-        # Kita menggunakan komponen HTML Streamlit untuk menyuntikkan script JS Jitsi
-        jitsi_html = f"""
-        <div id="jitsi-container" style="height: 600px; width: 100%;"></div>
+        # HTML Kustom untuk memaksimalkan tinggi video
+        # Tinggi diatur ke 80vh (80% dari tinggi viewport) agar terlihat besar
+        jitsi_embed_code = f"""
+        <div id="jitsi-meet-container" style="width: 100%; height: 80vh; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.2);"></div>
+
         <script src='https://meet.jit.si/external_api.js'></script>
         <script>
-            var domain = '{jitsi_domain}';
+            var domain = '{domain}';
             var options = {{
-                roomName: '{room_id}',
+                roomName: '{clean_room_id}',
                 width: '100%',
-                height: '600',
-                parentNode: document.querySelector('#jitsi-container'),
+                height: '100%',
+                parentNode: document.querySelector('#jitsi-meet-container'),
+                lang: 'id', // Bahasa Indonesia
                 userInfo: {{
                     displayName: '{participant_name}'
                 }},
                 configOverwrite: {{ 
                     startWithAudioMuted: false, 
-                    startWithVideoMuted: false 
+                    startWithVideoMuted: false,
+                    disableDeepLinking: true
                 }},
-                interfaceConfigOverwrite: {{ 
+                interfaceConfigOverwrite: {{
                     TOOLBAR_BUTTONS: [
                         'microphone', 'camera', 'closedcaptions', 'desktop', 'fullscreen',
                         'fodeviceselection', 'hangup', 'profile', 'chat', 'recording',
@@ -79,21 +101,41 @@ if generate_btn:
                         'videoquality', 'filmstrip', 'invite', 'feedback', 'stats', 'shortcuts',
                         'tileview', 'videobackgroundblur', 'download', 'help', 'mute-everyone',
                         'security'
-                    ]
+                    ],
+                    DISABLE_JOIN_LEAVE_NOTIFICATIONS: false,
+                    SHOW_JITSI_WATERMARK: false,
+                    SHOW_BRAND_WATERMARK: false
                 }}
             }};
+
             var api = new JitsiMeetExternalAPI(domain, options);
 
-            // Event listeners opsional (contoh: saat user keluar)
+            // Event Listener untuk logika tambahan jika diperlukan
             api.addEventListeners({{
-                videoConferenceLeft: function () {{
-                    console.log("User has left the conference");
+                readyToClose: function() {{
+                    console.log("Meeting ditutup");
+                }},
+                videoConferenceJoined: function() {{
+                    console.log("User joined the conference");
                 }}
             }});
         </script>
         """
 
-        st.components.v1.html(jitsi_html, height=650)
+        # Render HTML
+        st.components.v1.html(jitsi_embed_code, height=700, scrolling=False)
+
+        st.divider()
+        st.markdown("""
+        <div style="text-align: center; color: #666; font-size: 0.9em;">
+            <em>Untuk keluar dari meeting, klik ikon "Hangup" (Telepon Merah) di dalam jendela video.</em>
+        </div>
+        """, unsafe_allow_html=True)
 
 else:
-    st.info("💡 Silakan isi nama dan klik 'Mulai Meeting' di sidebar untuk masuk ke ruang konferensi.")
+    st.markdown("""
+    <div style="text-align: center; padding: 50px; color: #888;">
+        <h3>Siap Meeting?</h3>
+        <p>Masukkan nama dan ID ruangan di atas, lalu klik <strong>"Bergabung Sekarang"</strong>.</p>
+    </div>
+    """, unsafe_allow_html=True)
