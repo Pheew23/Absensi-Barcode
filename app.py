@@ -1,137 +1,80 @@
 import streamlit as st
-import sqlite3
 import uuid
 import csv
 import io
 from datetime import datetime
-import time
 
-# --- Konfigurasi Halaman (Mobile Friendly) ---
+# --- Konfigurasi Halaman (Mobile First) ---
 st.set_page_config(
-    page_title="Meeting HP",
+    page_title="Meeting Mobile",
     page_icon="📱",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# --- Custom CSS untuk Mobile ---
-# Ini adalah kunci agar video tidak terpotong di HP
+# --- CSS Khusus untuk HP agar Video Tidak Terpotong ---
 st.markdown("""
 <style>
-    /* Hilangkan padding berlebih di atas/bawah untuk video */
+    /* Menghilangkan padding berlebih di mobile */
     .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-        padding-left: 1rem;
-        padding-right: 1rem;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
     }
 
-    /* Pastikan kontainer video memenuhi lebar layar */
+    /* Memaksa video container memenuhi lebar */
     [data-testid="stVerticalBlock"] > div > div {
         width: 100%;
     }
 
-    /* Perbaiki tinggi iframe Jitsi di mobile */
+    /* Perbaikan tinggi Iframe Jitsi */
     iframe {
         border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
     }
 
-    /* Sembunyikan elemen yang tidak perlu saat meeting aktif di HP */
-    .meeting-active .st-emotion-cache-1c7f0r {
-        display: none; /* Sembunyikan header jika perlu (opsional) */
-    }
-
-    /* Pastikan tabel responsif */
-    .stDataFrame {
-        font-size: 12px;
+    /* Tombol lebih besar untuk jari */
+    .stButton > button {
+        height: 50px;
+        font-size: 16px;
+        width: 100%;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Database Logic (Sama seperti sebelumnya) ---
-DB_FILE = "meeting_db.sqlite"
-
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS attendance (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nama TEXT NOT NULL,
-            peran TEXT NOT NULL,
-            waktu_masuk TEXT NOT NULL,
-            room_id TEXT NOT NULL
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-def add_attendance(nama, peran, room_id):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    c.execute("SELECT * FROM attendance WHERE nama = ? AND room_id = ?", (nama, room_id))
-    if c.fetchone():
-        conn.close()
-        return False, "Nama sudah terdaftar."
-    c.execute("INSERT INTO attendance (nama, peran, room_id, waktu_masuk) VALUES (?, ?, ?, ?)",
-              (nama, peran, room_id, waktu))
-    conn.commit()
-    conn.close()
-    return True, "Berhasil!"
-
-def get_attendance(room_id):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT id, nama, peran, waktu_masuk FROM attendance WHERE room_id = ? ORDER BY waktu_masuk DESC", (room_id,))
-    rows = c.fetchall()
-    conn.close()
-    return rows
-
-def clear_attendance(room_id):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("DELETE FROM attendance WHERE room_id = ?", (room_id,))
-    conn.commit()
-    conn.close()
-
-init_db()
+st.title("📱 Meeting Jitsi & Catatan")
+st.caption("Mode Tanpa Database: Data absensi hanya tersimpan di HP Anda.")
 
 # --- State Management ---
-if 'current_room_id' not in st.session_state:
-    st.session_state['current_room_id'] = ""
-if 'current_user_name' not in st.session_state:
-    st.session_state['current_user_name'] = ""
-if 'user_registered' not in st.session_state:
-    st.session_state['user_registered'] = False
+if 'room_id' not in st.session_state:
+    st.session_state['room_id'] = ""
+if 'user_name' not in st.session_state:
+    st.session_state['user_name'] = ""
+if 'is_meeting' not in st.session_state:
+    st.session_state['is_meeting'] = False
+if 'my_attendance' not in st.session_state:
+    st.session_state['my_attendance'] = []
 
-# --- Tampilan Header ---
-st.title("📱 Meeting & Absensi")
-st.caption("Mode Mobile: Video akan memenuhi layar.")
-
-# --- LOGIKA UTAMA ---
-
-# Jika user sudah terdaftar, tampilkan Video zuerst (Prioritas HP)
-if st.session_state.get('user_registered') and st.session_state.get('current_room_id'):
-    room_id = st.session_state['current_room_id']
-    user_name = st.session_state['current_user_name']
+# --- Layout: Jika Meeting Aktif -> Tampilan Video Penuh ---
+if st.session_state['is_meeting']:
+    room_id = st.session_state['room_id']
+    user_name = st.session_state['user_name']
     domain = "meet.jit.si"
 
-    # Tampilan Full Screen Video
+    # Header Minimalis
     st.markdown(f"### 🟢 Ruangan: `{room_id}`")
 
-    # Tombol Keluar di bagian atas agar mudah diakses
+    # Tombol Keluar (Penting agar mudah diakses)
     if st.button("🛑 Keluar Meeting", use_container_width=True, type="secondary"):
-        st.session_state['user_registered'] = False
-        st.session_state['current_room_id'] = ""
+        st.session_state['is_meeting'] = False
         st.rerun()
 
     st.divider()
 
-    # --- JITSI EMBED (CSS PERBAIKAN KHUSUS) ---
-    # Height diatur ke 80vh (80% tinggi layar) + scroll hidden
-    jitsi_html = f"""
+    # --- VIDEO JITSI (FULL SCREEN MOBILE) ---
+    # Tinggi diatur 80vh (80% tinggi layar HP) agar tidak terpotong header/footer
+    jitsi_code = f"""
     <div style="width: 100%; height: 80vh; overflow: hidden; border-radius: 12px; position: relative;">
         <div id="jitsi-container" style="width: 100%; height: 100%;"></div>
         <script src='https://meet.jit.si/external_api.js'></script>
@@ -161,98 +104,102 @@ if st.session_state.get('user_registered') and st.session_state.get('current_roo
                         'tileview', 'videobackgroundblur', 'download', 'help', 'mute-everyone',
                         'security'
                     ],
-                    DISABLE_JOIN_LEAVE_NOTIFICATIONS: false,
                     SHOW_JITSI_WATERMARK: false
                 }}
             }};
             var api = new JitsiMeetExternalAPI(domain, options);
-
-            // Event: Ketika user keluar dari Jitsi, kita reset state
-            api.addEventListeners({{
-                videoConferenceLeft: function () {{
-                    console.log("User left");
-                }}
-            }});
         </script>
     </div>
     """
+    st.components.v1.html(jitsi_code, height=650, scrolling=False)
 
-    st.components.v1.html(jitsi_html, height=600, scrolling=False)
-
-    # Tampilkan daftar hadir di bawah video (agar tidak menutupi video)
+    # Catatan Tambahan di Bawah Video (Scrollable)
     st.divider()
-    st.subheader("📋 Daftar Hadir")
+    st.subheader("📝 Catatan Absensi Pribadi (HP Anda)")
+    st.info("⚠️ Catatan ini hanya tersimpan di HP Anda. Untuk absensi global, silakan salin nama ke WhatsApp grup.")
 
-    data_rows = get_attendance(room_id)
-    if data_rows:
-        import pandas as pd
-        data_list = [{"No": i+1, "Waktu": r[3], "Nama": r[1], "Peran": r[2]} for i, r in enumerate(data_rows)]
-        df = pd.DataFrame(data_list)
-        # Scrollable table di HP
-        st.dataframe(df, use_container_width=True, hide_index=True, height=200)
+    # Form Tambah Catatan Pribadi
+    with st.form("note_form", clear_on_submit=True):
+        note_name = st.text_input("Nama yang hadir")
+        note_role = st.selectbox("Peran", ["Peserta", "Narasumber"])
+        btn_add_note = st.form_submit_button("➕ Tambah ke Catatan")
 
-        # Tombol Download & Reset
-        col1, col2 = st.columns(2)
-        with col1:
-            csv_buffer = io.StringIO()
-            writer = csv.writer(csv_buffer)
-            writer.writerow(["No", "Waktu", "Nama", "Peran"])
-            for i, r in enumerate(data_rows):
-                writer.writerow([i+1, r[3], r[1], r[2]])
-            st.download_button("⬇️ Unduh CSV", csv_buffer.getvalue(), f"absensi_{room_id}.csv", "text/csv", use_container_width=True)
-
-        with col2:
-            if st.button("🗑️ Reset", use_container_width=True):
-                clear_attendance(room_id)
-                st.rerun()
-    else:
-        st.info("Belum ada peserta.")
-
-else:
-    # --- LAYAR INPUT (SEBELUM MASUK) ---
-    st.markdown("### 📝 Masuk ke Rapat")
-
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        room_input = st.text_input("ID Ruangan", placeholder="Contoh: rapat-123", key="room_in")
-    with col2:
-        if st.button("🎲 Acak", use_container_width=True):
-            st.session_state['temp_room'] = f"rapat-{uuid.uuid4().hex[:6]}"
+        if btn_add_note and note_name:
+            st.session_state['my_attendance'].append({
+                "nama": note_name,
+                "role": note_role,
+                "waktu": datetime.now().strftime("%H:%M")
+            })
+            st.success("Catatan ditambahkan!")
             st.rerun()
 
-    if st.session_state.get('temp_room'):
-        room_input = st.session_state['temp_room']
-        st.warning(f"ID Ruangan: `{room_input}` (Gunakan ID ini untuk semua peserta)")
-        # Hapus temp setelah ditampilkan
-        del st.session_state['temp_room']
-        st.session_state['current_room_id'] = room_input
+    # Tampilkan Daftar Catatan Pribadi
+    if st.session_state['my_attendance']:
+        st.markdown("**Daftar yang tercatat di HP ini:**")
+        for i, item in enumerate(st.session_state['my_attendance']):
+            st.markdown(f"{i+1}. **{item['nama']}** ({item['role']}) - {item['waktu']}")
+
+        # Export Catatan Pribadi
+        csv_buffer = io.StringIO()
+        writer = csv.writer(csv_buffer)
+        writer.writerow(["No", "Waktu", "Nama", "Peran"])
+        for i, item in enumerate(st.session_state['my_attendance'], 1):
+            writer.writerow([i, item['waktu'], item['nama'], item['role']])
+
+        st.download_button(
+            label="⬇️ Unduh Catatan Saya (CSV)",
+            data=csv_buffer.getvalue(),
+            file_name=f"catatan_{user_name}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+
+        if st.button("🗑️ Hapus Catatan Pribadi"):
+            st.session_state['my_attendance'] = []
+            st.rerun()
+
+else:
+    # --- LAYAR AWAL (INPUT) ---
+    st.markdown("### 📝 Masuk ke Rapat")
+
+    # Input ID Ruangan
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        room_input = st.text_input("ID Ruangan (Harus Sama)", placeholder="Contoh: rapat-123")
+    with col2:
+        if st.button("🎲 Acak ID"):
+            st.session_state['temp_id'] = f"rapat-{uuid.uuid4().hex[:6]}"
+            st.rerun()
+
+    if st.session_state.get('temp_id'):
+        room_input = st.session_state['temp_id']
+        st.warning(f"ID Ruangan: `{room_input}` (Salin ID ini dan kirim ke peserta lain)")
+        del st.session_state['temp_id']
+        st.session_state['room_id'] = room_input
 
     if room_input:
-        st.session_state['current_room_id'] = room_input.strip()
+        st.session_state['room_id'] = room_input.strip()
 
-    with st.form("join_form"):
-        name_in = st.text_input("Nama Lengkap", placeholder="Nama Anda")
-        role_in = st.selectbox("Peran", ["Peserta", "Narasumber", "Moderator"])
+    # Form Login
+    with st.form("login_form"):
+        name_input = st.text_input("Nama Lengkap Anda", placeholder="Contoh: Budi")
+        role_input = st.selectbox("Peran", ["Peserta", "Narasumber", "Moderator"])
 
-        submit = st.form_submit_button("✅ Daftar & Masuk", type="primary", use_container_width=True)
+        btn_join = st.form_submit_button("✅ Masuk & Mulai Meeting", type="primary")
 
-        if submit:
+        if btn_join:
             if not room_input:
                 st.error("⚠️ Masukkan ID Ruangan!")
-            elif not name_in:
+            elif not name_input:
                 st.error("⚠️ Masukkan Nama!")
             else:
-                success, msg = add_attendance(name_in.strip(), role_in, room_input.strip())
-                if success:
-                    st.session_state['current_user_name'] = name_in.strip()
-                    st.session_state['user_registered'] = True
-                    st.success("Berhasil! Mengarahkan ke video...")
-                    st.rerun()
-                else:
-                    st.error(msg)
+                st.session_state['user_name'] = name_input.strip()
+                st.session_state['room_id'] = room_input.strip()
+                st.session_state['is_meeting'] = True
+                st.success("✅ Mengalihkan ke video...")
+                st.rerun()
     else:
         st.info("👇 Silakan isi ID Ruangan di atas.")
 
-# Footer
 st.markdown("---")
-st.caption("Aplikasi Meeting & Absensi Mobile-Optimized")
+st.caption("Aplikasi Mobile-Optimized | Tanpa Database Global")
