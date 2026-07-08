@@ -119,7 +119,7 @@ with col_video:
 
         # Embed Jitsi (Tampilan Penuh)
         jitsi_embed_code = f"""
-        <div id="jitsi-meet-container" style="width: 100%; height: 60vh; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.3);"></div>
+        <div id="jitsi-meet-container" style="width: 100%; height: 100vh; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.3);"></div>
 
         <script src='https://meet.jit.si/external_api.js'></script>
         <script>
@@ -127,7 +127,7 @@ with col_video:
             var options = {{
                 roomName: '{clean_room_id}',
                 width: '100%',
-                height: '120%',
+                height: '100%',
                 parentNode: document.querySelector('#jitsi-meet-container'),
                 lang: 'id',
                 userInfo: {{
