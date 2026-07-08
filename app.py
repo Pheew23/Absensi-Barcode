@@ -1,80 +1,97 @@
 import streamlit as st
 import uuid
+import csv
+import io
+from datetime import datetime
 
 # --- Konfigurasi Halaman ---
 st.set_page_config(
-    page_title="Jitsi Meeting Pro",
-    page_icon="📹",
+    page_title="Jitsi Meeting + Absensi",
+    page_icon="📋",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# --- Header & Styling ---
-st.title("🎥 Video Meeting Jitsi Meet")
+# --- Inisialisasi Session State untuk Absensi ---
+if 'attendance_list' not in st.session_state:
+    st.session_state['attendance_list'] = []
+if 'meeting_active' not in st.session_state:
+    st.session_state['meeting_active'] = False
+
+# --- Header ---
+st.title("🎥 Video Meeting & Absensi Otomatis")
 st.markdown("""
-> Aplikasi ini memungkinkan Anda membuat atau bergabung ke ruang konferensi video secara instan.
-> **Tips:** Gunakan ID ruangan yang unik agar tidak bentrok dengan orang lain.
+### Fitur:
+1. **Video Meeting**: Terintegrasi Jitsi Meet (Full Screen).
+2. **Absensi**: Rekam nama peserta sebelum bergabung.
+3. **Export**: Unduh daftar hadir dalam format Excel/CSV.
 """)
 
-# --- Kontrol Input (Dibuat di bagian atas, bukan sidebar) ---
-col1, col2 = st.columns([3, 1])
+# --- Layout Utama: 2 Kolom (Kiri: Kontrol, Kanan: Video/Absensi) ---
+# Kita buat layout yang membagi area: Kiri untuk input, Kanan untuk video besar
+col_control, col_video = st.columns([1, 2], gap="small")
 
-with col1:
-    participant_name = st.text_input("Nama Anda (Nama Siswa)", placeholder="Masukkan nama panggilan...", key="name_input")
+with col_control:
+    st.header("📝 Data Peserta")
+    st.markdown("Masukkan nama Anda sebelum bergabung.")
 
-with col2:
-    st.markdown("<br>", unsafe_allow_html=True)
-    # Tombol untuk membuat ID acak
-    if st.button("🎲 Buat ID Acak", key="random_id_btn"):
-        new_id = f"meeting-{uuid.uuid4().hex[:8]}"
-        st.session_state.room_id = new_id
-        st.rerun()
+    with st.form(key="absensi_form"):
+        p_name = st.text_input("Nama Lengkap", placeholder="Contoh: Budi Santoso")
+        p_role = st.selectbox("Peran", ["Peserta", "Narasumber", "Moderator", "Tamu"])
 
-# Input ID Ruangan
-st.divider()
-st.subheader("📍 Masuk ke Ruang Meeting")
+        submit_absen = st.form_submit_button("✅ Daftar & Masuk Meeting")
 
-col_room1, col_room2 = st.columns([4, 1])
+    st.divider()
 
-with col_room1:
-    # Cek apakah ada ID di session state (dari tombol random atau input sebelumnya)
-    default_room = st.session_state.get("room_id", "")
-    room_id = st.text_input(
-        "Masukkan Kelas (Contoh: 1A)", 
-        value=default_room,
-        placeholder="Ketik ID ruangan atau gunakan tombol 'Buat ID Acak' di atas",
-        key="room_input"
-    )
+    # Panel Absensi Terdaftar
+    st.subheader("📋 Daftar Hadir Saat Ini")
 
-with col_room2:
-    st.markdown("<br>", unsafe_allow_html=True)
-    join_btn = st.button("🚀 Bergabung Sekarang", type="primary", use_container_width=True)
+    if st.session_state['attendance_list']:
+        for i, item in enumerate(st.session_state['attendance_list']):
+            st.markdown(f"**{i+1}.** {item['nama']} ({item['role']})")
 
-# --- Logika Penampilan Jitsi ---
-if join_btn:
-    if not participant_name.strip():
-        st.error("⚠️ **Harap isi Nama Anda terlebih dahulu!**")
-    elif not room_id.strip():
-        st.error("⚠️ **Harap isi ID Ruangan!**")
+        # Tombol Download
+        st.divider()
+        st.markdown("### 📥 Unduh Laporan")
+
+        # Membuat file CSV
+        csv_buffer = io.StringIO()
+        writer = csv.writer(csv_buffer)
+        writer.writerow(["No", "Waktu", "Nama", "Peran"])
+        for idx, item in enumerate(st.session_state['attendance_list'], 1):
+            writer.writerow([idx, item['waktu'], item['nama'], item['role']])
+
+        csv_data = csv_buffer.getvalue()
+
+        st.download_button(
+            label="⬇️ Download Absensi (CSV)",
+            data=csv_data,
+            file_name=f"absensi_meeting_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+
+        if st.button("🗑️ Reset Daftar Absensi"):
+            st.session_state['attendance_list'] = []
+            st.rerun()
     else:
-        # Membersihkan ID ruangan (menghilangkan spasi di awal/akhir)
-        clean_room_id = room_id.strip()
+        st.info("Belum ada peserta yang terdaftar.")
 
-        # Konfigurasi Jitsi
-        # Kita menggunakan meet.jit.si (Server Publik)
+with col_video:
+    st.header("📹 Ruang Video Meeting")
+
+    if st.session_state.get('meeting_active'):
+        # Data dari session state sebelumnya
+        clean_room_id = st.session_state['room_id']
+        participant_name = st.session_state['participant_name']
         domain = "meet.jit.si"
-        url = f"https://{domain}/{clean_room_id}"
 
-        st.success(f"✅ Bergabung ke ruang: **`{clean_room_id}`**")
-        st.info(f"👤 Anda masuk sebagai: **{participant_name}**")
+        st.success(f"🟢 **Meeting Berlangsung**: `{clean_room_id}`")
+        st.caption(f"Host: {participant_name}")
 
-        # --- Embed Jitsi dengan Tinggi Besar ---
-        st.markdown("### 📹 Ruang Video Aktif")
-
-        # HTML Kustom untuk memaksimalkan tinggi video
-        # Tinggi diatur ke 80vh (80% dari tinggi viewport) agar terlihat besar
+        # --- Embed Jitsi (Tampilan Besar) ---
         jitsi_embed_code = f"""
-        <div id="jitsi-meet-container" style="width: 100%; height: 80vh; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.2);"></div>
+        <div id="jitsi-meet-container" style="width: 100%; height: 75vh; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.3);"></div>
 
         <script src='https://meet.jit.si/external_api.js'></script>
         <script>
@@ -84,7 +101,7 @@ if join_btn:
                 width: '100%',
                 height: '100%',
                 parentNode: document.querySelector('#jitsi-meet-container'),
-                lang: 'id', // Bahasa Indonesia
+                lang: 'id',
                 userInfo: {{
                     displayName: '{participant_name}'
                 }},
@@ -103,39 +120,65 @@ if join_btn:
                         'security'
                     ],
                     DISABLE_JOIN_LEAVE_NOTIFICATIONS: false,
-                    SHOW_JITSI_WATERMARK: false,
-                    SHOW_BRAND_WATERMARK: false
+                    SHOW_JITSI_WATERMARK: false
                 }}
             }};
 
             var api = new JitsiMeetExternalAPI(domain, options);
-
-            // Event Listener untuk logika tambahan jika diperlukan
-            api.addEventListeners({{
-                readyToClose: function() {{
-                    console.log("Meeting ditutup");
-                }},
-                videoConferenceJoined: function() {{
-                    console.log("User joined the conference");
-                }}
-            }});
         </script>
         """
-
-        # Render HTML
-        st.components.v1.html(jitsi_embed_code, height=700, scrolling=False)
+        st.components.v1.html(jitsi_embed_code, height=650, scrolling=False)
 
         st.divider()
-        st.markdown("""
-        <div style="text-align: center; color: #666; font-size: 0.9em;">
-            <em>Untuk keluar dari meeting, klik ikon "Hangup" (Telepon Merah) di dalam jendela video.</em>
-        </div>
-        """, unsafe_allow_html=True)
+        if st.button("🛑 Selesai Meeting (Reset)"):
+            st.session_state['meeting_active'] = False
+            st.rerun()
 
-else:
-    st.markdown("""
-    <div style="text-align: center; padding: 50px; color: #888;">
-        <h3>Siap Meeting?</h3>
-        <p>Masukkan nama dan ID ruangan di atas, lalu klik <strong>"Bergabung Sekarang"</strong>.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    else:
+        # Tampilan Awal Sebelum Masuk
+        st.info("👈 Silakan isi form di sebelah kiri untuk mendaftar dan masuk ke ruang meeting.")
+
+        # Tombol Acak Room ID jika belum ada
+        if 'room_id' not in st.session_state:
+            if st.button("🎲 Buat ID Ruangan Baru"):
+                st.session_state['room_id'] = f"rapat-{uuid.uuid4().hex[:6]}"
+                st.rerun()
+        else:
+            st.markdown(f"**ID Ruangan Saat Ini:** `{st.session_state['room_id']}`")
+
+# --- Logika Utama: Saat Form Absensi Disubmit ---
+if submit_absen:
+    if not p_name.strip():
+        st.error("⚠️ Nama tidak boleh kosong!")
+    else:
+        # 1. Buat ID Ruangan jika belum ada
+        if 'room_id' not in st.session_state:
+            st.session_state['room_id'] = f"rapat-{uuid.uuid4().hex[:6]}"
+
+        # 2. Simpan data absensi
+        new_entry = {
+            "nama": p_name.strip(),
+            "role": p_role,
+            "waktu": datetime.now().strftime("%H:%M:%S")
+        }
+
+        # Cek duplikasi nama sederhana
+        exists = any(item['nama'].lower() == p_name.lower() for item in st.session_state['attendance_list'])
+        if not exists:
+            st.session_state['attendance_list'].append(new_entry)
+            st.session_state['participant_name'] = p_name.strip()
+            st.session_state['meeting_active'] = True
+
+            st.success(f"✅ {p_name} berhasil didaftarkan! Mengalihkan ke video...")
+            st.rerun()
+        else:
+            st.warning(f"⚠️ Nama '{p_name}' sudah terdaftar. Silakan gunakan nama lain.")
+
+# --- Footer ---
+st.divider()
+st.markdown("""
+<div style="text-align: center; color: #aaa; font-size: 0.8em;">
+    Disarankan menggunakan browser Chrome atau Edge untuk performa terbaik.<br>
+    Aplikasi ini berjalan di server publik Jitsi. Pastikan koneksi internet stabil.
+</div>
+""", unsafe_allow_html=True)
