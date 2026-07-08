@@ -126,8 +126,8 @@ with col_video:
             var domain = '{domain}';
             var options = {{
                 roomName: '{clean_room_id}',
-                width: '100%',
-                height: '100%',
+                width: '80%',
+                height: '900%',
                 parentNode: document.querySelector('#jitsi-meet-container'),
                 lang: 'id',
                 userInfo: {{
