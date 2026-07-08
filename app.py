@@ -119,7 +119,7 @@ with col_video:
 
         # Embed Jitsi (Tampilan Penuh)
         jitsi_embed_code = f"""
-        <div id="jitsi-meet-container" style="width: 110%; height: 70vh; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.3);"></div>
+        <div id="jitsi-meet-container" style="width: 90%; height: 70vh; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.3);"></div>
 
         <script src='https://meet.jit.si/external_api.js'></script>
         <script>
@@ -155,7 +155,7 @@ with col_video:
             var api = new JitsiMeetExternalAPI(domain, options);
         </script>
         """
-        st.components.v1.html(jitsi_embed_code, height=600, scrolling=True)
+        st.components.v1.html(jitsi_embed_code, height=700, scrolling=True)
 
     else:
         # Tampilan Awal (Placeholder)
