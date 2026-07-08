@@ -126,8 +126,8 @@ with col_video:
             var domain = '{domain}';
             var options = {{
                 roomName: '{clean_room_id}',
-                width: '120%',
-                height: '120%',
+                width: '100%',
+                height: '100%',
                 parentNode: document.querySelector('#jitsi-meet-container'),
                 lang: 'id',
                 userInfo: {{
@@ -155,7 +155,7 @@ with col_video:
             var api = new JitsiMeetExternalAPI(domain, options);
         </script>
         """
-        st.components.v1.html(jitsi_embed_code, height=600, scrolling=False)
+        st.components.v1.html(jitsi_embed_code, height=700, scrolling=true)
 
     else:
         # Tampilan Awal (Placeholder)
